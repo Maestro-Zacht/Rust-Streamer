@@ -53,25 +53,42 @@ impl StreamingServer {
 
         let multiudpsink = gst::ElementFactory::make("multiudpsink").build()?;
 
+        let tee = gst::ElementFactory::make("tee").build()?;
+
+        let queue1 = gst::ElementFactory::make("queue").build()?;
+        let queue2 = gst::ElementFactory::make("queue").build()?;
+
+        let videoconvert2 = gst::ElementFactory::make("videoconvert").build()?;
+        let videosink = gst::ElementFactory::make("autovideosink").build()?;
+
         let pipeline = gst::Pipeline::with_name("send-pipeline");
 
         pipeline.add_many(&[
             &source,
             &capsfilter,
+            &tee,
+            &queue1,
+            &queue2,
+            &videoconvert,
+            &enc,
+            &pay,
+            &multiudpsink,
+            &videoconvert2,
+            &videosink,
+        ])?;
+
+        gst::Element::link_many(&[
+            &source,
+            &capsfilter,
+            &tee,
+            &queue1,
             &videoconvert,
             &enc,
             &pay,
             &multiudpsink,
         ])?;
 
-        gst::Element::link_many(&[
-            &source,
-            &capsfilter,
-            &videoconvert,
-            &enc,
-            &pay,
-            &multiudpsink,
-        ])?;
+        gst::Element::link_many(&[&tee, &queue2, &videoconvert2, &videosink])?;
 
         let multiudpsink = Arc::new(multiudpsink);
         let multiudpsink2 = multiudpsink.clone();
@@ -115,6 +132,6 @@ impl StreamingServer {
     }
 
     pub fn capture_fullscreen(&self) {
-        self.capture_resize(0, 0, 0, 0)
+        self.capture_resize(0, 0, 0, 0);
     }
 }
