@@ -115,9 +115,6 @@ impl StreamingServer {
     }
 
     pub fn capture_fullscreen(&self) {
-        self.source.set_property("startx", 0);
-        self.source.set_property("starty", 0);
-        self.source.set_property("endx", 0);
-        self.source.set_property("endy", 0);
+        self.capture_resize(0, 0, 0, 0)
     }
 }

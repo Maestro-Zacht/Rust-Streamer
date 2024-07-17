@@ -40,5 +40,6 @@ impl ConnectionServer {
     pub fn stop(self) {
         self.ws_handler.stop();
         self.thread_handle.join().unwrap();
+        println!("Connection server stopped");
     }
 }
