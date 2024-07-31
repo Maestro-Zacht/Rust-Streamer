@@ -30,9 +30,17 @@ impl StreamingServer {
     pub fn new() -> Result<Self, StreamingServerError> {
         gst::init()?;
 
-        let source = gst::ElementFactory::make("ximagesrc")
-            .property("use-damage", false)
-            .build()?;
+        let source = if cfg!(target_os = "windows") {
+            gst::ElementFactory::make("d3d11screencapturesrc")
+                .property("show-cursor", true)
+                .build()?
+        } else if cfg!(target_os = "linux") {
+            gst::ElementFactory::make("ximagesrc")
+                .property("use-damage", false)
+                .build()?
+        } else {
+            todo!()
+        };
 
         let capsfilter = gst::ElementFactory::make("capsfilter")
             .property(
@@ -124,11 +132,20 @@ impl StreamingServer {
         Ok(())
     }
 
+    #[cfg(target_os = "linux")]
     pub fn capture_resize(&self, startx: u32, starty: u32, endx: u32, endy: u32) {
         self.source.set_property("startx", startx);
         self.source.set_property("starty", starty);
         self.source.set_property("endx", endx);
         self.source.set_property("endy", endy);
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn capture_resize(&self, startx: u32, starty: u32, endx: u32, endy: u32) {
+        self.source.set_property("crop-x", startx);
+        self.source.set_property("crop-y", starty);
+        self.source.set_property("crop-width", endx - startx);
+        self.source.set_property("crop-height", endy - starty);
     }
 
     pub fn capture_fullscreen(&self) {
