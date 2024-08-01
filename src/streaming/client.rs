@@ -39,7 +39,18 @@ impl StreamingClient {
 
         let depay = gst::ElementFactory::make("rtph264depay").build()?;
         let decode = gst::ElementFactory::make("decodebin").build()?;
+        let videoscale = gst::ElementFactory::make("videoscale").build()?;
+        let capsfilter2 = gst::ElementFactory::make("capsfilter")
+            .property(
+                "caps",
+                gst::Caps::builder("video/x-raw")
+                    .field("width", 400) // TODO dynamic scaling
+                    .field("height", 400)
+                    .build(),
+            )
+            .build()?;
         let convert = gst::ElementFactory::make("videoconvert").build()?;
+        let jpegenc = gst::ElementFactory::make("jpegenc").build()?;
         let sink = gst_app::AppSink::builder()
             .max_buffers(3)
             .caps(&gst::Caps::builder("image/jpeg").build())
@@ -47,7 +58,16 @@ impl StreamingClient {
 
         let pipeline = gst::Pipeline::with_name("recv-pipeline");
 
-        pipeline.add_many(&[&source, &depay, &decode, &convert, sink.upcast_ref()])?;
+        pipeline.add_many(&[
+            &source,
+            &depay,
+            &decode,
+            &videoscale,
+            &capsfilter2,
+            &convert,
+            &jpegenc,
+            sink.upcast_ref(),
+        ])?;
 
         source.link_filtered(
             &depay,
@@ -60,16 +80,20 @@ impl StreamingClient {
         )?;
         depay.link(&decode)?;
 
-        let convert_weak = convert.downgrade();
+        let videoscale_weak = videoscale.downgrade();
         decode.connect_pad_added(move |_, src_pad| {
-            let sink_pad = match convert_weak.upgrade() {
+            let sink_pad = match videoscale_weak.upgrade() {
                 None => return,
                 Some(s) => s.static_pad("sink").unwrap(),
             };
             src_pad.link(&sink_pad).unwrap();
         });
 
-        convert.link(&sink)?;
+        videoscale.link(&capsfilter2)?;
+        capsfilter2.link(&convert)?;
+
+        convert.link(&jpegenc)?;
+        jpegenc.link(&sink)?;
 
         let pipeline = Arc::new(pipeline);
 

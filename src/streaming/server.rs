@@ -73,7 +73,18 @@ impl StreamingServer {
         let queue1 = gst::ElementFactory::make("queue").build()?;
         let queue2 = gst::ElementFactory::make("queue").build()?;
 
+        let videoscale = gst::ElementFactory::make("videoscale").build()?;
+        let capsfilter2 = gst::ElementFactory::make("capsfilter")
+            .property(
+                "caps",
+                gst::Caps::builder("video/x-raw")
+                    .field("width", 400) // TODO dynamic scaling
+                    .field("height", 400)
+                    .build(),
+            )
+            .build()?;
         let videoconvert2 = gst::ElementFactory::make("videoconvert").build()?;
+        let jpegenc = gst::ElementFactory::make("jpegenc").build()?;
         let videosink = gst_app::AppSink::builder()
             .max_buffers(3)
             .caps(&gst::Caps::builder("image/jpeg").build())
@@ -91,7 +102,10 @@ impl StreamingServer {
             &enc,
             &pay,
             &multiudpsink,
+            &videoscale,
+            &capsfilter2,
             &videoconvert2,
+            &jpegenc,
             videosink.upcast_ref(),
         ])?;
 
@@ -106,7 +120,15 @@ impl StreamingServer {
             &multiudpsink,
         ])?;
 
-        gst::Element::link_many(&[&tee, &queue2, &videoconvert2, videosink.upcast_ref()])?;
+        gst::Element::link_many(&[
+            &tee,
+            &queue2,
+            &videoscale,
+            &capsfilter2,
+            &videoconvert2,
+            &jpegenc,
+            videosink.upcast_ref(),
+        ])?;
 
         let multiudpsink = Arc::new(multiudpsink);
         let multiudpsink2 = multiudpsink.clone();
