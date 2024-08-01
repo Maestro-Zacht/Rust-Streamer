@@ -1,9 +1,11 @@
+use byte_slice_cast::*;
 use std::io;
 use std::sync::Arc;
 
-use gst::glib;
 use gst::prelude::*;
+use gst::{element_error, glib};
 use gstreamer as gst;
+use gstreamer_app as gst_app;
 use thiserror::Error;
 
 use crate::connection::server::ConnectionServer;
@@ -16,6 +18,9 @@ pub enum StreamingServerError {
     #[error("GStreamer element error: {0}")]
     GStreamerElementCreationError(#[from] glib::BoolError),
 
+    #[error("GStreamer state change error: {0}")]
+    GStreamerStateChangeError(#[from] gst::StateChangeError),
+
     #[error("Websocket error: {0}")]
     WebsocketError(#[from] io::Error),
 }
@@ -23,11 +28,13 @@ pub enum StreamingServerError {
 pub struct StreamingServer {
     source: gst::Element,
     pipeline: gst::Pipeline,
-    connection_server: ConnectionServer,
+    _connection_server: ConnectionServer,
 }
 
 impl StreamingServer {
-    pub fn new() -> Result<Self, StreamingServerError> {
+    pub fn new(
+        mut image_parser: impl FnMut(&[u8]) + Send + 'static,
+    ) -> Result<Self, StreamingServerError> {
         gst::init()?;
 
         let source = if cfg!(target_os = "windows") {
@@ -67,7 +74,10 @@ impl StreamingServer {
         let queue2 = gst::ElementFactory::make("queue").build()?;
 
         let videoconvert2 = gst::ElementFactory::make("videoconvert").build()?;
-        let videosink = gst::ElementFactory::make("autovideosink").build()?;
+        let videosink = gst_app::AppSink::builder()
+            .max_buffers(3)
+            .caps(&gst::Caps::builder("image/jpeg").build())
+            .build();
 
         let pipeline = gst::Pipeline::with_name("send-pipeline");
 
@@ -82,7 +92,7 @@ impl StreamingServer {
             &pay,
             &multiudpsink,
             &videoconvert2,
-            &videosink,
+            videosink.upcast_ref(),
         ])?;
 
         gst::Element::link_many(&[
@@ -96,7 +106,7 @@ impl StreamingServer {
             &multiudpsink,
         ])?;
 
-        gst::Element::link_many(&[&tee, &queue2, &videoconvert2, &videosink])?;
+        gst::Element::link_many(&[&tee, &queue2, &videoconvert2, videosink.upcast_ref()])?;
 
         let multiudpsink = Arc::new(multiudpsink);
         let multiudpsink2 = multiudpsink.clone();
@@ -111,25 +121,60 @@ impl StreamingServer {
             },
         )?;
 
+        videosink.set_callbacks(
+            gst_app::AppSinkCallbacks::builder()
+                .new_sample(move |appsink| {
+                    let sample = appsink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
+                    let buffer = sample.buffer().ok_or_else(|| {
+                        element_error!(
+                            appsink,
+                            gst::ResourceError::Failed,
+                            ("Failed to get buffer from appsink")
+                        );
+
+                        gst::FlowError::Error
+                    })?;
+
+                    let map = buffer.map_readable().map_err(|_| {
+                        element_error!(
+                            appsink,
+                            gst::ResourceError::Failed,
+                            ("Failed to map buffer readable")
+                        );
+
+                        gst::FlowError::Error
+                    })?;
+
+                    let samples = map.as_slice_of::<u8>().map_err(|_| {
+                        element_error!(
+                            appsink,
+                            gst::ResourceError::Failed,
+                            ("Failed to interpret buffer as bytes")
+                        );
+
+                        gst::FlowError::Error
+                    })?;
+
+                    image_parser(samples);
+
+                    Ok(gst::FlowSuccess::Ok)
+                })
+                .build(),
+        );
+
         Ok(Self {
             source,
             pipeline,
-            connection_server,
+            _connection_server: connection_server,
         })
     }
 
-    pub fn start(&self) -> Result<(), gst::StateChangeError> {
-        self.pipeline.set_state(gst::State::Playing).map(|_| ())
+    pub fn start(&self) -> Result<(), StreamingServerError> {
+        Ok(self.pipeline.set_state(gst::State::Playing).map(|_| ())?)
     }
 
-    pub fn pause(&self) -> Result<(), gst::StateChangeError> {
-        self.pipeline.set_state(gst::State::Paused).map(|_| ())
-    }
-
-    pub fn close(self) -> Result<(), gst::StateChangeError> {
-        self.pipeline.set_state(gst::State::Null)?;
-        self.connection_server.stop();
-        Ok(())
+    pub fn pause(&self) -> Result<(), StreamingServerError> {
+        Ok(self.pipeline.set_state(gst::State::Paused).map(|_| ())?)
     }
 
     #[cfg(target_os = "linux")]
@@ -150,5 +195,11 @@ impl StreamingServer {
 
     pub fn capture_fullscreen(&self) {
         self.capture_resize(0, 0, 0, 0);
+    }
+}
+
+impl Drop for StreamingServer {
+    fn drop(&mut self) {
+        let _ = self.pipeline.set_state(gst::State::Null);
     }
 }

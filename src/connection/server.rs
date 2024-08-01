@@ -3,7 +3,6 @@ use message_io::node::{self, NodeHandler};
 use std::{io, thread};
 
 pub struct ConnectionServer {
-    thread_handle: thread::JoinHandle<()>,
     ws_handler: NodeHandler<()>,
 }
 
@@ -16,7 +15,7 @@ impl ConnectionServer {
 
         ws_handler.network().listen(Transport::Ws, "0.0.0.0:9000")?;
 
-        let thread_handle = thread::spawn(move || {
+        thread::spawn(move || {
             listener.for_each(move |event| match event.network() {
                 NetEvent::Connected(..) => unreachable!(),
                 NetEvent::Accepted(endpoint, _) => {
@@ -31,15 +30,12 @@ impl ConnectionServer {
             });
         });
 
-        Ok(Self {
-            thread_handle,
-            ws_handler,
-        })
+        Ok(Self { ws_handler })
     }
+}
 
-    pub fn stop(self) {
+impl Drop for ConnectionServer {
+    fn drop(&mut self) {
         self.ws_handler.stop();
-        self.thread_handle.join().unwrap();
-        println!("Connection server stopped");
     }
 }
