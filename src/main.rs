@@ -43,7 +43,7 @@ impl MyApp {
                 .to_rgba8();
 
             let size = [image.width() as usize, image.height() as usize];
-            let image = egui::ColorImage::from_rgba_unmultiplied(size, &image);
+            let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
 
             // println!("Received image with size {:?}", size);
 
