@@ -7,6 +7,11 @@ edition = "2021"
 
 [dependencies]
 gstreamer = "0.22"
+gstreamer-app = "0.22"
 message-io = { version = "0.18", default-features = false, features = ["websocket"] }
 thiserror = "1.0"
 clap = { version = "4.5", features = ["derive"] }
+eframe = { version = "0.28", features = ["default"] }
+egui_extras = { version = "0.28", features = ["default", "all_loaders"] }
+image = { version = "0.25", features = ["jpeg", "png"] }
+byte-slice-cast = "1"
