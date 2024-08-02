@@ -42,23 +42,12 @@ impl MyApp {
                 .unwrap()
                 .to_rgba8();
 
-            let image = image::RgbaImage::from_raw(image.width(), image.height(), image.into_raw())
-                .unwrap();
-
             let size = [image.width() as usize, image.height() as usize];
-            let mut pixels = Vec::with_capacity(size[0] * size[1]);
-            for y in 0..size[1] {
-                for x in 0..size[0] {
-                    let pixel = image.get_pixel(x as u32, y as u32);
-                    pixels.push(egui::Color32::from_rgba_premultiplied(
-                        pixel[0], pixel[1], pixel[2], pixel[3],
-                    ));
-                }
-            }
+            let image = egui::ColorImage::from_rgba_unmultiplied(size, &image);
 
-            println!("Received image with size {:?}", size);
+            // println!("Received image with size {:?}", size);
 
-            *image_clone.lock().unwrap() = Some(egui::ColorImage { pixels, size });
+            *image_clone.lock().unwrap() = Some(image);
         })
         .unwrap();
         streaming.start().unwrap();
@@ -83,7 +72,7 @@ impl eframe::App for MyApp {
             drop(data);
 
             if let Some(texture) = &self.texture {
-                ui.image(texture);
+                ui.add(egui::Image::from_texture(texture).shrink_to_fit());
             }
         });
     }
@@ -97,10 +86,7 @@ fn main() {
     //     Commands::Recv(ServerArgs { ip }) => Streaming::new_client(ip, |_| {}).unwrap(),
     // };
 
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([800.0, 800.0]),
-        ..Default::default()
-    };
+    let options = Default::default();
     eframe::run_native(
         "Image Viewer",
         options,

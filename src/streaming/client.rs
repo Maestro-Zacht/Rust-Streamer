@@ -39,16 +39,6 @@ impl StreamingClient {
 
         let depay = gst::ElementFactory::make("rtph264depay").build()?;
         let decode = gst::ElementFactory::make("decodebin").build()?;
-        let videoscale = gst::ElementFactory::make("videoscale").build()?;
-        let capsfilter2 = gst::ElementFactory::make("capsfilter")
-            .property(
-                "caps",
-                gst::Caps::builder("video/x-raw")
-                    .field("width", 400) // TODO dynamic scaling
-                    .field("height", 400)
-                    .build(),
-            )
-            .build()?;
         let convert = gst::ElementFactory::make("videoconvert").build()?;
         let jpegenc = gst::ElementFactory::make("jpegenc").build()?;
         let sink = gst_app::AppSink::builder()
@@ -62,8 +52,6 @@ impl StreamingClient {
             &source,
             &depay,
             &decode,
-            &videoscale,
-            &capsfilter2,
             &convert,
             &jpegenc,
             sink.upcast_ref(),
@@ -80,17 +68,14 @@ impl StreamingClient {
         )?;
         depay.link(&decode)?;
 
-        let videoscale_weak = videoscale.downgrade();
+        let convert_weak = convert.downgrade();
         decode.connect_pad_added(move |_, src_pad| {
-            let sink_pad = match videoscale_weak.upgrade() {
+            let sink_pad = match convert_weak.upgrade() {
                 None => return,
                 Some(s) => s.static_pad("sink").unwrap(),
             };
             src_pad.link(&sink_pad).unwrap();
         });
-
-        videoscale.link(&capsfilter2)?;
-        capsfilter2.link(&convert)?;
 
         convert.link(&jpegenc)?;
         jpegenc.link(&sink)?;
