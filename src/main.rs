@@ -18,15 +18,51 @@ enum Commands {
     Recv(ServerArgs),
 }
 
+
 #[derive(Args, Debug)]
 struct ServerArgs {
     ip: String,
+}
+
+#[derive(Clone, Copy, PartialEq)]  // Aggiunto PartialEq per l'enum Mode
+enum Mode {
+    Caster,
+    Receiver,
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        Mode::Caster
+    }
+}
+
+enum TransmissionStatus {
+    Idle,
+    Casting,
+    Receiving,
+}
+
+impl Default for TransmissionStatus {
+    fn default() -> Self {
+        TransmissionStatus::Idle
+    }
+}
+
+struct ScreenArea {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
 }
 
 struct MyApp {
     _streaming: Streaming,
     current_image: Arc<Mutex<Option<egui::ColorImage>>>,
     texture: Option<egui::TextureHandle>,
+    mode: Mode,
+    caster_address: String,
+    selected_screen_area: Option<ScreenArea>,
+    transmission_status: TransmissionStatus,
 }
 
 impl MyApp {
@@ -55,12 +91,89 @@ impl MyApp {
             _streaming: streaming,
             current_image,
             texture: None,
+            mode: Mode::default(),
+            caster_address: String::default(),
+            selected_screen_area: None,
+            transmission_status: TransmissionStatus::default()
         }
     }
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Screen-Caster");
+
+            ui.separator();
+
+            ui.horizontal(|ui| {
+                ui.label("Mode:");
+                ui.radio_value(&mut self.mode, Mode::Caster, "Caster");
+                ui.radio_value(&mut self.mode, Mode::Receiver, "Receiver");
+            });
+
+            ui.separator();
+
+            match self.mode {
+                Mode::Caster => {
+                    ui.label("Select screen area:");
+                    ui.separator();
+
+                    // Mock screen area selection (replace with actual logic)
+                    ui.add_space(8.0);
+
+                    let mut data = self.current_image.lock().unwrap();
+                    if let Some(image) = data.take() {
+                        self.texture = Some(ui.ctx().load_texture("image", image, Default::default()));
+                    }
+                    drop(data);
+
+                    if let Some(texture) = &self.texture {
+                        ui.add(egui::Image::from_texture(texture).shrink_to_fit());
+                    }
+
+                }
+                Mode::Receiver => {
+                    ui.label("Enter caster's address:");
+                    // Input field for the address (replace with actual logic)
+                    ui.text_edit_singleline(&mut self.caster_address);
+                }
+            }
+
+            ui.separator();
+
+            match self.transmission_status {
+                TransmissionStatus::Idle => {
+                    match self.mode {
+                        Mode::Caster => {
+                            if ui.button("Start trasmission").clicked() {
+                                self.transmission_status = TransmissionStatus::Casting;
+                            }
+                        }
+                        Mode::Receiver => {
+                            if ui.button("Start reception").clicked() {
+                                self.transmission_status = TransmissionStatus::Receiving;
+                            }
+                        }
+                    }
+                }
+                TransmissionStatus::Casting => {
+                    ui.label("Casting...");
+                    if ui.button("Stop transmission").clicked() {
+                        self.transmission_status = TransmissionStatus::Idle;
+                    }
+                }
+                TransmissionStatus::Receiving => {
+                    ui.label("Receiving...");
+                    if ui.button("Stop reception").clicked() {
+                        self.transmission_status = TransmissionStatus::Idle;
+                    }
+                }
+            }
+        });
+    }
+
+    /*fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Hello World!");
             ui.label("This is an example app");
@@ -75,7 +188,7 @@ impl eframe::App for MyApp {
                 ui.add(egui::Image::from_texture(texture).shrink_to_fit());
             }
         });
-    }
+    }*/
 }
 
 fn main() {
