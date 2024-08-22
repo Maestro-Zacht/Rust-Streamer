@@ -28,6 +28,7 @@ pub enum StreamingServerError {
 pub struct StreamingServer {
     source: gst::Element,
     pipeline: gst::Pipeline,
+    crop: gst::Element,
     _connection_server: ConnectionServer,
 }
 
@@ -45,8 +46,13 @@ impl StreamingServer {
             gst::ElementFactory::make("ximagesrc")
                 .property("use-damage", false)
                 .build()?
+        } else if cfg!(target_os = "macos") {
+            gst::ElementFactory::make("avfvideosrc")
+                .property("capture-screen", true)
+                .property("capture-screen-cursor", true)
+                .build()?
         } else {
-            todo!()
+            unimplemented!()
         };
 
         let capsfilter = gst::ElementFactory::make("capsfilter")
@@ -57,6 +63,8 @@ impl StreamingServer {
                     .build(),
             )
             .build()?;
+
+        let crop = gst::ElementFactory::make("videocrop").build()?;
 
         let videoconvert = gst::ElementFactory::make("videoconvert").build()?;
 
@@ -85,6 +93,7 @@ impl StreamingServer {
         pipeline.add_many(&[
             &source,
             &capsfilter,
+            &crop,
             &tee,
             &queue1,
             &queue2,
@@ -100,6 +109,7 @@ impl StreamingServer {
         gst::Element::link_many(&[
             &source,
             &capsfilter,
+            &crop,
             &tee,
             &queue1,
             &videoconvert,
@@ -173,6 +183,7 @@ impl StreamingServer {
         Ok(Self {
             source,
             pipeline,
+            crop,
             _connection_server: connection_server,
         })
     }
@@ -186,6 +197,7 @@ impl StreamingServer {
     }
 
     #[cfg(target_os = "linux")]
+    /// startx, starty are the top left corner of the rectangle, endx, endy are the bottom right corner of the rectangle
     pub fn capture_resize(&self, startx: u32, starty: u32, endx: u32, endy: u32) {
         self.source.set_property("startx", startx);
         self.source.set_property("starty", starty);
@@ -194,11 +206,21 @@ impl StreamingServer {
     }
 
     #[cfg(target_os = "windows")]
+    /// startx, starty are the top left corner of the rectangle, endx, endy are the bottom right corner of the rectangle
     pub fn capture_resize(&self, startx: u32, starty: u32, endx: u32, endy: u32) {
         self.source.set_property("crop-x", startx);
         self.source.set_property("crop-y", starty);
         self.source.set_property("crop-width", endx - startx);
         self.source.set_property("crop-height", endy - starty);
+    }
+
+    #[cfg(target_os = "macos")]
+    /// the parameters are the number of pixels to remove from the left, top, right and bottom of the screen
+    pub fn capture_resize(&self, left: u32, top: u32, right: u32, bottom: u32) {
+        self.crop.set_property("left", left);
+        self.crop.set_property("top", top);
+        self.crop.set_property("right", right);
+        self.crop.set_property("bottom", bottom);
     }
 
     pub fn capture_fullscreen(&self) {
