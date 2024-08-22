@@ -6,6 +6,12 @@ use rust_streamer::streaming::Streaming;
 use clap::{Args, Parser, Subcommand};
 use eframe::egui::{self, Color32};
 
+use std::net::Ipv4Addr;
+
+fn is_valid_ipv4(ip: &str) -> bool {
+    ip.parse::<Ipv4Addr>().is_ok()
+}
+
 #[derive(Parser, Debug)]
 struct Cli {
     #[command(subcommand)]
@@ -36,6 +42,7 @@ impl Default for Mode {
     }
 }
 
+#[derive(PartialEq)]
 enum TransmissionStatus {
     Idle,
     Casting,
@@ -48,11 +55,12 @@ impl Default for TransmissionStatus {
     }
 }
 
+#[derive(PartialEq, Clone)]
 struct ScreenArea {
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
+    startx: u32,
+    starty: u32,
+    endx: u32,
+    endy: u32,
 }
 
 struct MyApp {
@@ -63,6 +71,8 @@ struct MyApp {
     caster_address: String,
     selected_screen_area: Option<ScreenArea>,
     transmission_status: TransmissionStatus,
+    pause: bool,
+    wrong_ip: bool
 }
 
 impl MyApp {
@@ -87,14 +97,17 @@ impl MyApp {
         })
         .unwrap();
         streaming.start().unwrap();
+
         Self {
             _streaming: streaming,
-            current_image,
+            current_image: current_image,
             texture: None,
             mode: Mode::default(),
             caster_address: String::default(),
             selected_screen_area: None,
-            transmission_status: TransmissionStatus::default()
+            transmission_status: TransmissionStatus::default(),
+            pause: false,
+            wrong_ip: false
         }
     }
 }
@@ -108,8 +121,16 @@ impl eframe::App for MyApp {
 
             ui.horizontal(|ui| {
                 ui.label("Mode:");
-                ui.radio_value(&mut self.mode, Mode::Caster, "Caster");
-                ui.radio_value(&mut self.mode, Mode::Receiver, "Receiver");
+                ui.add_enabled_ui(self.transmission_status == TransmissionStatus::Idle, |ui| {
+                    if ui.radio(self.mode == Mode::Caster, "Caster").clicked() {
+                        self.mode = Mode::Caster;
+                    }
+                });
+                ui.add_enabled_ui(self.transmission_status == TransmissionStatus::Idle, |ui| {
+                    if ui.radio(self.mode == Mode::Receiver, "Receiver").clicked() {
+                        self.mode = Mode::Receiver;
+                    }
+                });
             });
 
             ui.separator();
@@ -117,6 +138,21 @@ impl eframe::App for MyApp {
             match self.mode {
                 Mode::Caster => {
                     ui.label("Select screen area:");
+                    ui.horizontal(|ui| {
+                        if ui.selectable_value(&mut None, self.selected_screen_area.clone(), "Total screen").clicked(){
+                            self.selected_screen_area = None;
+                            if let Streaming::Server(ss) = &self._streaming{
+                                ss.capture_fullscreen();
+                            }
+                        }
+                        if ui.selectable_value(&mut true, self.selected_screen_area.is_some(), "Personalized area").clicked(){
+                            self.selected_screen_area = todo!();
+                            if let Streaming::Server(ss) = &self._streaming{
+                                ss.capture_resize(self.selected_screen_area.clone().unwrap().startx, self.selected_screen_area.clone().unwrap().starty, self.selected_screen_area.clone().unwrap().endx, self.selected_screen_area.clone().unwrap().endy)
+                            }
+                        }
+                    });
+
                     ui.separator();
 
                     // Mock screen area selection (replace with actual logic)
@@ -131,12 +167,16 @@ impl eframe::App for MyApp {
                     if let Some(texture) = &self.texture {
                         ui.add(egui::Image::from_texture(texture).shrink_to_fit());
                     }
-
                 }
                 Mode::Receiver => {
+                    if self.wrong_ip{
+                        ui.colored_label(egui::Color32::RED, "Please insert a valid IP address!");
+                    }
                     ui.label("Enter caster's address:");
-                    // Input field for the address (replace with actual logic)
-                    ui.text_edit_singleline(&mut self.caster_address);
+
+                    ui.add_enabled(self.transmission_status == TransmissionStatus::Idle, |ui: &mut egui::Ui|{
+                        ui.text_edit_singleline(&mut self.caster_address)
+                    });
                 }
             }
 
@@ -152,16 +192,40 @@ impl eframe::App for MyApp {
                         }
                         Mode::Receiver => {
                             if ui.button("Start reception").clicked() {
-                                self.transmission_status = TransmissionStatus::Receiving;
+                                if is_valid_ipv4(&self.caster_address){
+                                    self.wrong_ip = false;
+                                    self.transmission_status = TransmissionStatus::Receiving;
+                                }
+                                else{
+                                    self.wrong_ip = true;
+                                }
                             }
                         }
                     }
                 }
                 TransmissionStatus::Casting => {
-                    ui.label("Casting...");
-                    if ui.button("Stop transmission").clicked() {
-                        self.transmission_status = TransmissionStatus::Idle;
+                    if !self.pause{
+                        ui.label("Casting...");
                     }
+                    else{
+                        ui.label("Pause...");
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.button("Stop transmission").clicked() {
+                            self.transmission_status = TransmissionStatus::Idle;
+                            //TODO: aggiornare stato pipeline server
+                        }
+
+                        if ui.add_enabled(!self.pause, egui::Button::new("Pause")).clicked() {
+                            self.pause = true;
+                            //TODO: aggiornare stato pipeline server
+                        }
+                        if ui.add_enabled(self.pause, egui::Button::new("Resume")).clicked() {
+                            self.pause = false;
+                            //TODO: aggiornare stato pipeline server
+                        }
+                    });
+
                 }
                 TransmissionStatus::Receiving => {
                     ui.label("Receiving...");
