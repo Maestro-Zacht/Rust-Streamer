@@ -96,7 +96,7 @@ impl MyApp {
             *image_clone.lock().unwrap() = Some(image);
         })
         .unwrap();
-        streaming.start().unwrap();
+        
 
         Self {
             _streaming: streaming,
@@ -187,6 +187,7 @@ impl eframe::App for MyApp {
                     match self.mode {
                         Mode::Caster => {
                             if ui.button("Start trasmission").clicked() {
+                                self._streaming.start().unwrap();
                                 self.transmission_status = TransmissionStatus::Casting;
                             }
                         }
