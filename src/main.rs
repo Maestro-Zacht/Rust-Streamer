@@ -4,7 +4,7 @@ use image::ImageFormat;
 use rust_streamer::streaming::Streaming;
 
 use clap::{Args, Parser, Subcommand};
-use eframe::egui::{self, Color32};
+use eframe::egui::{self, Color32, Key};
 
 use std::net::Ipv4Addr;
 
@@ -64,7 +64,7 @@ struct ScreenArea {
 }
 
 struct MyApp {
-    _streaming: Streaming,
+    _streaming: Option<Streaming>,
     current_image: Arc<Mutex<Option<egui::ColorImage>>>,
     texture: Option<egui::TextureHandle>,
     mode: Mode,
@@ -72,7 +72,8 @@ struct MyApp {
     selected_screen_area: Option<ScreenArea>,
     transmission_status: TransmissionStatus,
     pause: bool,
-    wrong_ip: bool
+    wrong_ip: bool,
+    blanking_screen: bool
 }
 
 impl MyApp {
@@ -82,32 +83,20 @@ impl MyApp {
             [200, 200],
             Color32::BLACK,
         ))));
-        let image_clone = current_image.clone();
-        let streaming = Streaming::new_server(move |bytes| {
-            let image = image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
-                .unwrap()
-                .to_rgba8();
-
-            let size = [image.width() as usize, image.height() as usize];
-            let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
-
-            // println!("Received image with size {:?}", size);
-
-            *image_clone.lock().unwrap() = Some(image);
-        })
-        .unwrap();
+        
         
 
         Self {
-            _streaming: streaming,
-            current_image: current_image,
+            _streaming: None,
+            current_image,
             texture: None,
             mode: Mode::default(),
             caster_address: String::default(),
             selected_screen_area: None,
             transmission_status: TransmissionStatus::default(),
             pause: false,
-            wrong_ip: false
+            wrong_ip: false,
+            blanking_screen: false
         }
     }
 }
@@ -141,32 +130,26 @@ impl eframe::App for MyApp {
                     ui.horizontal(|ui| {
                         if ui.selectable_value(&mut None, self.selected_screen_area.clone(), "Total screen").clicked(){
                             self.selected_screen_area = None;
-                            if let Streaming::Server(ss) = &self._streaming{
-                                ss.capture_fullscreen();
+                            if let Some(s) = &self._streaming{
+                                if let Streaming::Server(ss) = &s{
+                                    ss.capture_fullscreen();
+                                }
                             }
                         }
                         if ui.selectable_value(&mut true, self.selected_screen_area.is_some(), "Personalized area").clicked(){
                             self.selected_screen_area = todo!();
-                            if let Streaming::Server(ss) = &self._streaming{
-                                ss.capture_resize(self.selected_screen_area.clone().unwrap().startx, self.selected_screen_area.clone().unwrap().starty, self.selected_screen_area.clone().unwrap().endx, self.selected_screen_area.clone().unwrap().endy)
+                            if let Some(s) = &self._streaming{
+                                if let Streaming::Server(ss) = &s{
+                                    ss.capture_resize(self.selected_screen_area.clone().unwrap().startx, self.selected_screen_area.clone().unwrap().starty, self.selected_screen_area.clone().unwrap().endx, self.selected_screen_area.clone().unwrap().endy)
+                                }
                             }
                         }
                     });
 
-                    ui.separator();
+                    //ui.separator();
 
                     // Mock screen area selection (replace with actual logic)
-                    ui.add_space(8.0);
-
-                    let mut data = self.current_image.lock().unwrap();
-                    if let Some(image) = data.take() {
-                        self.texture = Some(ui.ctx().load_texture("image", image, Default::default()));
-                    }
-                    drop(data);
-
-                    if let Some(texture) = &self.texture {
-                        ui.add(egui::Image::from_texture(texture).shrink_to_fit());
-                    }
+                    //ui.add_space(8.0);
                 }
                 Mode::Receiver => {
                     if self.wrong_ip{
@@ -182,12 +165,56 @@ impl eframe::App for MyApp {
 
             ui.separator();
 
-            match self.transmission_status {
+            match &self.transmission_status {
                 TransmissionStatus::Idle => {
                     match self.mode {
                         Mode::Caster => {
                             if ui.button("Start trasmission").clicked() {
-                                self._streaming.start().unwrap();
+                                if let Some(s) = &self._streaming{
+                                    match s {
+                                        Streaming::Client(_) => {
+                                            let image_clone = self.current_image.clone();
+                                            let streaming = Streaming::new_server(move |bytes| {
+                                                let image = image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
+                                                    .unwrap()
+                                                    .to_rgba8();
+                        
+                                                let size = [image.width() as usize, image.height() as usize];
+                                                let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
+                        
+                                                // println!("Received image with size {:?}", size);
+                        
+                                                *image_clone.lock().unwrap() = Some(image);
+                                            })
+                                            .unwrap();
+                                            self._streaming = Some(streaming);
+                                        }
+                                        Streaming::Server(_) => { /* Nothing to do because it is already a streaming server */ }
+                                    }
+            
+                                }
+                                else{
+                                    let image_clone = self.current_image.clone();
+                                    let streaming = Streaming::new_server(move |bytes| {
+                                        let image = image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
+                                            .unwrap()
+                                            .to_rgba8();
+            
+                                        let size = [image.width() as usize, image.height() as usize];
+                                        let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
+            
+                                        // println!("Received image with size {:?}", size);
+            
+                                        *image_clone.lock().unwrap() = Some(image);
+                                    })
+                                    .unwrap();
+                                    self._streaming = Some(streaming);
+                                }
+                                if let Some(s) = &self._streaming{
+                                    self.pause = false;
+                                    self.blanking_screen = false;
+                                    s.start().unwrap();
+                                }
                                 self.transmission_status = TransmissionStatus::Casting;
                             }
                         }
@@ -196,6 +223,51 @@ impl eframe::App for MyApp {
                                 if is_valid_ipv4(&self.caster_address){
                                     self.wrong_ip = false;
                                     self.transmission_status = TransmissionStatus::Receiving;
+                                    if let Some(s) = &self._streaming{
+                                        match s {
+                                            Streaming::Client(_) => {}
+                                            Streaming::Server(_) => {
+                                                let image_clone = self.current_image.clone();
+                                                let streaming = Streaming::new_client(self.caster_address.clone(), move |bytes| {
+                                                    let image = image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
+                                                        .unwrap()
+                                                        .to_rgba8();
+                            
+                                                    let size = [image.width() as usize, image.height() as usize];
+                                                    let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
+                            
+                                                    // println!("Received image with size {:?}", size);
+                            
+                                                    *image_clone.lock().unwrap() = Some(image);
+                                                })
+                                                .unwrap();
+                                                self._streaming = Some(streaming);
+                                            }
+                                        }
+                
+                                    }
+                                    else{
+                                        let image_clone = self.current_image.clone();
+                                        let streaming = Streaming::new_client(self.caster_address.clone(), move |bytes| {
+                                            let image = image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
+                                                .unwrap()
+                                                .to_rgba8();
+                    
+                                            let size = [image.width() as usize, image.height() as usize];
+                                            let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
+                    
+                                            // println!("Received image with size {:?}", size);
+                    
+                                            *image_clone.lock().unwrap() = Some(image);
+                                        })
+                                        .unwrap();
+                                        self._streaming = Some(streaming);
+                                    }
+                                    if let Some(s) = &self._streaming{
+                                        self.caster_address = String::default();
+                                        self.wrong_ip = false;
+                                        s.start().unwrap();
+                                    }
                                 }
                                 else{
                                     self.wrong_ip = true;
@@ -205,25 +277,32 @@ impl eframe::App for MyApp {
                     }
                 }
                 TransmissionStatus::Casting => {
+                    let input = ctx.input(|i| i.clone());
                     if !self.pause{
                         ui.label("Casting...");
                     }
                     else{
-                        ui.label("Pause...");
+                        ui.colored_label(egui::Color32::LIGHT_RED, "Pause...");
                     }
                     ui.horizontal(|ui| {
-                        if ui.button("Stop transmission").clicked() {
+                        if ui.button("Stop transmission").clicked() || input.key_pressed(Key::T) && input.modifiers.ctrl{
+                            self._streaming.take();
+                            self.current_image = Arc::new(Mutex::new(Some(egui::ColorImage::new(
+                                [200, 200],
+                                Color32::BLACK))));
                             self.transmission_status = TransmissionStatus::Idle;
-                            //TODO: aggiornare stato pipeline server
                         }
 
-                        if ui.add_enabled(!self.pause, egui::Button::new("Pause")).clicked() {
+                        if ui.add_enabled(!self.pause, egui::Button::new("Pause")).clicked() || input.key_pressed(Key::P) && input.modifiers.ctrl{
                             self.pause = true;
                             //TODO: aggiornare stato pipeline server
                         }
-                        if ui.add_enabled(self.pause, egui::Button::new("Resume")).clicked() {
+                        if ui.add_enabled(self.pause, egui::Button::new("Resume")).clicked() || input.key_pressed(Key::R) && input.modifiers.ctrl{
                             self.pause = false;
                             //TODO: aggiornare stato pipeline server
+                        }
+                        if ui.selectable_value(&mut self.blanking_screen.clone(), true, "Blanking screen").clicked(){
+                            self.blanking_screen = !self.blanking_screen;
                         }
                     });
 
@@ -231,9 +310,23 @@ impl eframe::App for MyApp {
                 TransmissionStatus::Receiving => {
                     ui.label("Receiving...");
                     if ui.button("Stop reception").clicked() {
+                        self._streaming.take();
+                        self.current_image = Arc::new(Mutex::new(Some(egui::ColorImage::new(
+                            [200, 200],
+                            Color32::BLACK))));
                         self.transmission_status = TransmissionStatus::Idle;
                     }
                 }
+            }
+
+            let mut data = self.current_image.lock().unwrap();
+            if let Some(image) = data.take() {
+                self.texture = Some(ui.ctx().load_texture("image", image, Default::default()));
+            }
+            drop(data);
+
+            if let Some(texture) = &self.texture {
+                ui.add(egui::Image::from_texture(texture).shrink_to_fit());
             }
         });
     }
