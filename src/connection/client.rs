@@ -1,5 +1,6 @@
 use message_io::network::{NetEvent, Transport};
 use message_io::node::{self, NodeHandler};
+use std::sync::mpsc::channel;
 use std::{io, thread};
 
 pub struct ConnectionClient {
@@ -17,16 +18,33 @@ impl ConnectionClient {
             .network()
             .connect(Transport::Ws, format!("{}:9000", ip.as_ref()))?;
 
+        let (tx, rx) = channel();
+
         thread::spawn(move || {
             listener.for_each(move |event| match event.network() {
-                NetEvent::Connected(..) => println!("Connected"),
+                NetEvent::Connected(_, success) => {
+                    tx.send(success).unwrap();
+                    if success {
+                        println!("Connected");
+                    } else {
+                        println!("Failed to connect");
+                    }
+                }
                 NetEvent::Accepted(..) => unreachable!(),
                 NetEvent::Message(..) => println!("Message"),
                 NetEvent::Disconnected(_) => on_disconnect(),
             });
         });
 
-        Ok(Self { ws_handler })
+        if !rx.recv().unwrap() {
+            ws_handler.stop();
+            Err(io::Error::new(
+                io::ErrorKind::ConnectionRefused,
+                "Failed to connect",
+            ))
+        } else {
+            Ok(Self { ws_handler })
+        }
     }
 }
 
