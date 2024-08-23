@@ -28,7 +28,10 @@ pub enum StreamingServerError {
 pub struct StreamingServer {
     source: gst::Element,
     pipeline: gst::Pipeline,
+
+    #[cfg(target_os = "macos")]
     crop: gst::Element,
+
     _connection_server: ConnectionServer,
 }
 
@@ -183,7 +186,10 @@ impl StreamingServer {
         Ok(Self {
             source,
             pipeline,
+
+            #[cfg(target_os = "macos")]
             crop,
+
             _connection_server: connection_server,
         })
     }
