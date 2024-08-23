@@ -37,6 +37,7 @@ impl ConnectionClient {
         });
 
         if !rx.recv().unwrap() {
+            ws_handler.stop();
             Err(io::Error::new(
                 io::ErrorKind::ConnectionRefused,
                 "Failed to connect",
