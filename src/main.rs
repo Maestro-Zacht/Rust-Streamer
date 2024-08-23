@@ -301,7 +301,7 @@ impl eframe::App for MyApp {
                             self.pause = false;
                             //TODO: aggiornare stato pipeline server
                         }
-                        if ui.selectable_value(&mut self.blanking_screen.clone(), true, "Blanking screen").clicked(){
+                        if ui.selectable_value(&mut self.blanking_screen.clone(), true, "Blanking screen").clicked() || input.key_pressed(Key::B) && input.modifiers.ctrl {
                             self.blanking_screen = !self.blanking_screen;
                         }
                     });
