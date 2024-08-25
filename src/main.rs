@@ -130,7 +130,7 @@ impl eframe::App for MyApp {
                     ui.horizontal(|ui| {
                         if ui.selectable_value(&mut None, self.selected_screen_area.clone(), "Total screen").clicked(){
                             self.selected_screen_area = None;
-                            if let Some(s) = &self._streaming{
+                            if let Some(s) = &self._streaming {
                                 if let Streaming::Server(ss) = &s{
                                     ss.capture_fullscreen();
                                 }
@@ -138,10 +138,8 @@ impl eframe::App for MyApp {
                         }
                         if ui.selectable_value(&mut true, self.selected_screen_area.is_some(), "Personalized area").clicked(){
                             self.selected_screen_area = todo!();
-                            if let Some(s) = &self._streaming{
-                                if let Streaming::Server(ss) = &s{
-                                    ss.capture_resize(self.selected_screen_area.clone().unwrap().startx, self.selected_screen_area.clone().unwrap().starty, self.selected_screen_area.clone().unwrap().endx, self.selected_screen_area.clone().unwrap().endy)
-                                }
+                            if let Some(Streaming::Server(ss)) = &self._streaming {
+                                ss.capture_resize((&self.selected_screen_area).unwrap().startx, (&self.selected_screen_area).unwrap().starty, (&self.selected_screen_area).unwrap().endx, (&self.selected_screen_area).unwrap().endy)
                             }
                         }
                     });
@@ -289,15 +287,25 @@ impl eframe::App for MyApp {
 
                         if ui.add_enabled(!self.pause, egui::Button::new("Pause")).on_hover_text("Ctrl + P").clicked() || input.key_pressed(Key::P) && input.modifiers.ctrl{
                             self.pause = true;
-                            //TODO: aggiornare stato pipeline server
+                            if let Some(Streaming::Server(s)) = &self._streaming{
+                                s.pause().unwrap();
+                            }
                         }
                         if ui.add_enabled(self.pause, egui::Button::new("Resume")).on_hover_text("Ctrl + R").clicked() || input.key_pressed(Key::R) && input.modifiers.ctrl{
                             self.pause = false;
-                            //TODO: aggiornare stato pipeline server
+                            if let Some(Streaming::Server(s)) = &self._streaming{
+                                s.start().unwrap();
+                            }
                         }
                         if ui.selectable_value(&mut self.blanking_screen.clone(), true, "Blanking screen").on_hover_text("Ctrl + B").clicked() || input.key_pressed(Key::B) && input.modifiers.ctrl {
                             self.blanking_screen = !self.blanking_screen;
-                            //TODO: aggiornare stato pipeline server
+                            if let Some(Streaming::Server(s)) = &self._streaming {
+                                if self.blanking_screen {
+                                    s.blank_screen();
+                                } else {
+                                    s.restore_screen();
+                                }
+                            }
                         }
                     });
 
