@@ -26,7 +26,9 @@ pub enum StreamingServerError {
 }
 
 pub struct StreamingServer {
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     source: gst::Element,
+
     pipeline: gst::Pipeline,
 
     #[cfg(target_os = "macos")]
@@ -41,93 +43,31 @@ impl StreamingServer {
     ) -> Result<Self, StreamingServerError> {
         gst::init()?;
 
-        let source = if cfg!(target_os = "windows") {
-            gst::ElementFactory::make("d3d11screencapturesrc")
-                .property("show-cursor", true)
-                .build()?
+        let pipeline_string = if cfg!(target_os = "windows") {
+            "d3d11screencapturesrc show-cursor=true name=src ! video/x-raw,framerate=30/1 ! tee name=t ! queue ! videoconvert ! x264enc tune=zerolatency ! rtph264pay ! multiudpsink name=s t. ! queue ! videoconvert ! jpegenc ! appsink max-buffers=1 caps=image/jpeg name=videosink"
         } else if cfg!(target_os = "linux") {
-            gst::ElementFactory::make("ximagesrc")
-                .property("use-damage", false)
-                .build()?
-        } else if cfg!(target_os = "macos") {
-            gst::ElementFactory::make("avfvideosrc")
-                .property("capture-screen", true)
-                .property("capture-screen-cursor", true)
-                .build()?
+            "ximagesrc use-damage=false name=src ! video/x-raw,framerate=30/1 ! tee name=t ! queue ! videoconvert ! x264enc tune=zerolatency ! rtph264pay ! multiudpsink name=s t. ! queue ! videoconvert ! jpegenc ! appsink max-buffers=1 caps=image/jpeg name=videosink"
         } else {
-            unimplemented!()
+            "avfvideosrc capture-screen=1 capture-screen-cursor=1 name=src ! video/x-raw,framerate=30/1 ! videocrop name=crop ! tee name=t ! queue ! videoconvert ! x264enc tune=zerolatency ! rtph264pay ! multiudpsink name=s t. ! queue ! videoconvert ! jpegenc ! appsink max-buffers=1 caps=image/jpeg name=videosink"
         };
 
-        let capsfilter = gst::ElementFactory::make("capsfilter")
-            .property(
-                "caps",
-                gst::Caps::builder("video/x-raw")
-                    .field("framerate", &gst::Fraction::new(30, 1))
-                    .build(),
-            )
-            .build()?;
+        // can't panic if everything is installed
+        let pipeline = gst::parse::launch(&pipeline_string)
+            .unwrap()
+            .dynamic_cast::<gst::Pipeline>()
+            .unwrap();
+        let multiudpsink = pipeline.by_name("s").unwrap();
+        let videosink = pipeline
+            .by_name("videosink")
+            .unwrap()
+            .dynamic_cast::<gst_app::AppSink>()
+            .unwrap();
 
-        let crop = gst::ElementFactory::make("videocrop").build()?;
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
+        let source = pipeline.by_name("src").unwrap();
 
-        let videoconvert = gst::ElementFactory::make("videoconvert").build()?;
-
-        let enc = gst::ElementFactory::make("x264enc")
-            .property_from_str("tune", "zerolatency")
-            .build()?;
-
-        let pay = gst::ElementFactory::make("rtph264pay").build()?;
-
-        let multiudpsink = gst::ElementFactory::make("multiudpsink").build()?;
-
-        let tee = gst::ElementFactory::make("tee").build()?;
-
-        let queue1 = gst::ElementFactory::make("queue").build()?;
-        let queue2 = gst::ElementFactory::make("queue").build()?;
-
-        let videoconvert2 = gst::ElementFactory::make("videoconvert").build()?;
-        let jpegenc = gst::ElementFactory::make("jpegenc").build()?;
-        let videosink = gst_app::AppSink::builder()
-            .max_buffers(1)
-            .caps(&gst::Caps::builder("image/jpeg").build())
-            .build();
-
-        let pipeline = gst::Pipeline::with_name("send-pipeline");
-
-        pipeline.add_many(&[
-            &source,
-            &capsfilter,
-            &crop,
-            &tee,
-            &queue1,
-            &queue2,
-            &videoconvert,
-            &enc,
-            &pay,
-            &multiudpsink,
-            &videoconvert2,
-            &jpegenc,
-            videosink.upcast_ref(),
-        ])?;
-
-        gst::Element::link_many(&[
-            &source,
-            &capsfilter,
-            &crop,
-            &tee,
-            &queue1,
-            &videoconvert,
-            &enc,
-            &pay,
-            &multiudpsink,
-        ])?;
-
-        gst::Element::link_many(&[
-            &tee,
-            &queue2,
-            &videoconvert2,
-            &jpegenc,
-            videosink.upcast_ref(),
-        ])?;
+        #[cfg(target_os = "macos")]
+        let crop = pipeline.by_name("crop").unwrap();
 
         let multiudpsink = Arc::new(multiudpsink);
         let multiudpsink2 = multiudpsink.clone();
@@ -184,7 +124,9 @@ impl StreamingServer {
         );
 
         Ok(Self {
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
             source,
+
             pipeline,
 
             #[cfg(target_os = "macos")]
