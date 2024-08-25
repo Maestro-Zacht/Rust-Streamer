@@ -145,11 +145,6 @@ impl eframe::App for MyApp {
                             }
                         }
                     });
-
-                    //ui.separator();
-
-                    // Mock screen area selection (replace with actual logic)
-                    //ui.add_space(8.0);
                 }
                 Mode::Receiver => {
                     if self.wrong_ip{
@@ -264,7 +259,6 @@ impl eframe::App for MyApp {
                                         self._streaming = Some(streaming);
                                     }
                                     if let Some(s) = &self._streaming{
-                                        self.caster_address = String::default();
                                         self.wrong_ip = false;
                                         s.start().unwrap();
                                     }
@@ -285,7 +279,7 @@ impl eframe::App for MyApp {
                         ui.colored_label(egui::Color32::LIGHT_RED, "Pause...");
                     }
                     ui.horizontal(|ui| {
-                        if ui.button("Stop transmission").clicked() || input.key_pressed(Key::T) && input.modifiers.ctrl{
+                        if ui.button("Stop transmission").on_hover_text("Ctrl + T").clicked() || input.key_pressed(Key::T) && input.modifiers.ctrl{
                             self._streaming.take();
                             self.current_image = Arc::new(Mutex::new(Some(egui::ColorImage::new(
                                 [200, 200],
@@ -293,24 +287,26 @@ impl eframe::App for MyApp {
                             self.transmission_status = TransmissionStatus::Idle;
                         }
 
-                        if ui.add_enabled(!self.pause, egui::Button::new("Pause")).clicked() || input.key_pressed(Key::P) && input.modifiers.ctrl{
+                        if ui.add_enabled(!self.pause, egui::Button::new("Pause")).on_hover_text("Ctrl + P").clicked() || input.key_pressed(Key::P) && input.modifiers.ctrl{
                             self.pause = true;
                             //TODO: aggiornare stato pipeline server
                         }
-                        if ui.add_enabled(self.pause, egui::Button::new("Resume")).clicked() || input.key_pressed(Key::R) && input.modifiers.ctrl{
+                        if ui.add_enabled(self.pause, egui::Button::new("Resume")).on_hover_text("Ctrl + R").clicked() || input.key_pressed(Key::R) && input.modifiers.ctrl{
                             self.pause = false;
                             //TODO: aggiornare stato pipeline server
                         }
-                        if ui.selectable_value(&mut self.blanking_screen.clone(), true, "Blanking screen").clicked() || input.key_pressed(Key::B) && input.modifiers.ctrl {
+                        if ui.selectable_value(&mut self.blanking_screen.clone(), true, "Blanking screen").on_hover_text("Ctrl + B").clicked() || input.key_pressed(Key::B) && input.modifiers.ctrl {
                             self.blanking_screen = !self.blanking_screen;
+                            //TODO: aggiornare stato pipeline server
                         }
                     });
 
                 }
                 TransmissionStatus::Receiving => {
-                    ui.label("Receiving...");
+                    ui.label(format!("Receiving from {}...", self.caster_address));
                     if ui.button("Stop reception").clicked() {
                         self._streaming.take();
+                        self.caster_address = String::default();
                         self.current_image = Arc::new(Mutex::new(Some(egui::ColorImage::new(
                             [200, 200],
                             Color32::BLACK))));
@@ -330,33 +326,9 @@ impl eframe::App for MyApp {
             }
         });
     }
-
-    /*fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Hello World!");
-            ui.label("This is an example app");
-
-            let mut data = self.current_image.lock().unwrap();
-            if let Some(image) = data.take() {
-                self.texture = Some(ui.ctx().load_texture("image", image, Default::default()));
-            }
-            drop(data);
-
-            if let Some(texture) = &self.texture {
-                ui.add(egui::Image::from_texture(texture).shrink_to_fit());
-            }
-        });
-    }*/
 }
 
 fn main() {
-    // let cli = Cli::parse();
-
-    // let streaming = match cli.command {
-    //     Commands::Send => Streaming::new_server(|_| {}).unwrap(),
-    //     Commands::Recv(ServerArgs { ip }) => Streaming::new_client(ip, |_| {}).unwrap(),
-    // };
-
     let options = Default::default();
     eframe::run_native(
         "Image Viewer",
