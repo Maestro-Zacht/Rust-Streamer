@@ -34,6 +34,8 @@ pub struct StreamingServer {
     #[cfg(target_os = "macos")]
     crop: gst::Element,
 
+    selector: gst::Element,
+
     _connection_server: ConnectionServer,
 }
 
@@ -44,11 +46,11 @@ impl StreamingServer {
         gst::init()?;
 
         let pipeline_string = if cfg!(target_os = "windows") {
-            "d3d11screencapturesrc show-cursor=true name=src ! video/x-raw,framerate=30/1 ! tee name=t ! queue ! videoconvert ! x264enc tune=zerolatency ! rtph264pay ! multiudpsink name=s t. ! queue ! videoconvert ! jpegenc ! appsink max-buffers=1 caps=image/jpeg name=videosink"
+            "input-selector name=i ! tee name=t ! queue ! videoconvert ! x264enc tune=zerolatency ! rtph264pay ! multiudpsink name=s t. ! queue ! videoconvert ! jpegenc ! appsink max-buffers=1 caps=image/jpeg name=videosink d3d11screencapturesrc show-cursor=true name=src ! video/x-raw,framerate=30/1 ! i.sink_0 videotestsrc pattern=white ! video/x-raw,framerate=30/1 ! i.sink_1"
         } else if cfg!(target_os = "linux") {
-            "ximagesrc use-damage=false name=src ! video/x-raw,framerate=30/1 ! tee name=t ! queue ! videoconvert ! x264enc tune=zerolatency ! rtph264pay ! multiudpsink name=s t. ! queue ! videoconvert ! jpegenc ! appsink max-buffers=1 caps=image/jpeg name=videosink"
+            "input-selector name=i ! tee name=t ! queue ! videoconvert ! x264enc tune=zerolatency ! rtph264pay ! multiudpsink name=s t. ! queue ! videoconvert ! jpegenc ! appsink max-buffers=1 caps=image/jpeg name=videosink ximagesrc use-damage=false name=src ! video/x-raw,framerate=30/1 ! videoconvert ! i.sink_0 videotestsrc pattern=white ! video/x-raw,framerate=30/1 ! i.sink_1"
         } else {
-            "avfvideosrc capture-screen=1 capture-screen-cursor=1 name=src ! video/x-raw,framerate=30/1 ! videocrop name=crop ! tee name=t ! queue ! videoconvert ! x264enc tune=zerolatency ! rtph264pay ! multiudpsink name=s t. ! queue ! videoconvert ! jpegenc ! appsink max-buffers=1 caps=image/jpeg name=videosink"
+            "input-selector name=i ! tee name=t ! queue ! videoconvert ! x264enc tune=zerolatency ! rtph264pay ! multiudpsink name=s t. ! queue ! videoconvert ! jpegenc ! appsink max-buffers=1 caps=image/jpeg name=videosink avfvideosrc capture-screen=1 capture-screen-cursor=1 name=src ! video/x-raw,framerate=30/1 ! videocrop name=crop ! videoconvert ! i.sink_0 videotestsrc pattern=white ! video/x-raw,framerate=30/1 ! videoconvert ! i.sink_1"
         };
 
         // can't panic if everything is installed
@@ -68,6 +70,8 @@ impl StreamingServer {
 
         #[cfg(target_os = "macos")]
         let crop = pipeline.by_name("crop").unwrap();
+
+        let selector = pipeline.by_name("i").unwrap();
 
         let multiudpsink = Arc::new(multiudpsink);
         let multiudpsink2 = multiudpsink.clone();
@@ -132,6 +136,8 @@ impl StreamingServer {
             #[cfg(target_os = "macos")]
             crop,
 
+            selector,
+
             _connection_server: connection_server,
         })
     }
@@ -173,6 +179,16 @@ impl StreamingServer {
 
     pub fn capture_fullscreen(&self) {
         self.capture_resize(0, 0, 0, 0);
+    }
+
+    pub fn blank_screen(&self) {
+        self.selector
+            .set_property("active-pad", &self.selector.static_pad("sink_1").unwrap());
+    }
+
+    pub fn restore_screen(&self) {
+        self.selector
+            .set_property("active-pad", &self.selector.static_pad("sink_0").unwrap());
     }
 }
 
