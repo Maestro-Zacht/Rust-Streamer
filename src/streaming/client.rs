@@ -1,5 +1,11 @@
 use byte_slice_cast::*;
-use std::{io, sync::Arc};
+use std::{
+    io,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 use crate::connection::client::ConnectionClient;
 use gstreamer::{self as gst, element_error, glib, prelude::*};
@@ -24,6 +30,7 @@ pub enum StreamingClientError {
 pub struct StreamingClient {
     pipeline: Arc<gst::Pipeline>,
     _connection_client: ConnectionClient,
+    connected: Arc<AtomicBool>,
 }
 
 impl StreamingClient {
@@ -81,11 +88,13 @@ impl StreamingClient {
         jpegenc.link(&sink)?;
 
         let pipeline = Arc::new(pipeline);
+        let connected = Arc::new(AtomicBool::new(true));
 
         let pipeline_clone = pipeline.clone();
+        let connected_clone = connected.clone();
         let connection_client = ConnectionClient::new(ip, move || {
-            pipeline_clone.set_state(gst::State::Null).unwrap();
-            // TODO better close connection
+            let _ = pipeline_clone.set_state(gst::State::Null);
+            connected_clone.store(false, Ordering::Relaxed);
         })?;
 
         sink.set_callbacks(
@@ -132,11 +141,16 @@ impl StreamingClient {
         Ok(Self {
             pipeline,
             _connection_client: connection_client,
+            connected,
         })
     }
 
     pub fn start(&self) -> Result<(), StreamingClientError> {
         Ok(self.pipeline.set_state(gst::State::Playing).map(|_| ())?)
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.connected.load(Ordering::Relaxed)
     }
 }
 

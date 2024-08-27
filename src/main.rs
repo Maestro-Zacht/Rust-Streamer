@@ -218,7 +218,7 @@ impl eframe::App for MyApp {
                                     self.transmission_status = TransmissionStatus::Receiving;
                                     if let Some(s) = &self._streaming{
                                         match s {
-                                            Streaming::Client(_) => {}
+                                            Streaming::Client(_) => (),
                                             Streaming::Server(_) => {
                                                 let image_clone = self.current_image.clone();
                                                 let streaming = Streaming::new_client(self.caster_address.clone(), move |bytes| {
@@ -319,6 +319,16 @@ impl eframe::App for MyApp {
                             [200, 200],
                             Color32::BLACK))));
                         self.transmission_status = TransmissionStatus::Idle;
+                    }
+                    if let Some(Streaming::Client(s)) = &self._streaming {
+                        if !s.is_connected() {
+                            self._streaming.take();
+                            self.caster_address = String::default();
+                            self.current_image = Arc::new(Mutex::new(Some(egui::ColorImage::new(
+                                [200, 200],
+                                Color32::BLACK))));
+                            self.transmission_status = TransmissionStatus::Idle;
+                        }
                     }
                 }
             }

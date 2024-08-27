@@ -53,9 +53,8 @@ impl StreamingServer {
             "input-selector name=i ! tee name=t ! queue ! videoconvert ! x264enc tune=zerolatency ! rtph264pay ! multiudpsink name=s t. ! queue ! videoconvert ! jpegenc ! appsink max-buffers=1 caps=image/jpeg name=videosink avfvideosrc capture-screen=1 capture-screen-cursor=1 name=src ! video/x-raw,framerate=30/1 ! videocrop name=crop ! videoconvert ! i.sink_0 videotestsrc pattern=white ! video/x-raw,framerate=30/1 ! videoconvert ! i.sink_1"
         };
 
-        // can't panic if everything is installed
-        let pipeline = gst::parse::launch(&pipeline_string)
-            .unwrap()
+        // can't panic after pipeline is created correctly
+        let pipeline = gst::parse::launch(&pipeline_string)?
             .dynamic_cast::<gst::Pipeline>()
             .unwrap();
         let multiudpsink = pipeline.by_name("s").unwrap();

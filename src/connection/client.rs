@@ -36,14 +36,14 @@ impl ConnectionClient {
             });
         });
 
-        if !rx.recv().unwrap() {
+        if rx.recv().unwrap() {
+            Ok(Self { ws_handler })
+        } else {
             ws_handler.stop();
             Err(io::Error::new(
                 io::ErrorKind::ConnectionRefused,
                 "Failed to connect",
             ))
-        } else {
-            Ok(Self { ws_handler })
         }
     }
 }
