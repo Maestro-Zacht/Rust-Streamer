@@ -26,7 +26,6 @@ pub enum StreamingServerError {
 }
 
 pub struct StreamingServer {
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
     source: gst::Element,
 
     pipeline: gst::Pipeline,
@@ -64,7 +63,6 @@ impl StreamingServer {
             .dynamic_cast::<gst_app::AppSink>()
             .unwrap();
 
-        #[cfg(any(target_os = "windows", target_os = "linux"))]
         let source = pipeline.by_name("src").unwrap();
 
         #[cfg(target_os = "macos")]
@@ -127,7 +125,6 @@ impl StreamingServer {
         );
 
         Ok(Self {
-            #[cfg(any(target_os = "windows", target_os = "linux"))]
             source,
 
             pipeline,
@@ -174,6 +171,16 @@ impl StreamingServer {
         self.crop.set_property("top", top);
         self.crop.set_property("right", right);
         self.crop.set_property("bottom", bottom);
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn select_screen(&self, screen: u32) {
+        self.source.set_property("monitor-index", screen);
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn select_screen(&self, screen: u32) {
+        self.source.set_property("device-index", screen);
     }
 
     pub fn capture_fullscreen(&self) {
