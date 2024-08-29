@@ -106,14 +106,14 @@ impl eframe::App for MyApp {
                 });
             });
 
-            ui.separator();
-
             match self.error_msg.clone() {
                 Some(msg) => {
                     ui.colored_label(egui::Color32::RED, msg);
                 }
                 _ => {}
             }
+
+            ui.separator();
 
             match self.mode {
                 Mode::Caster => {
@@ -163,8 +163,6 @@ impl eframe::App for MyApp {
                                                 let size = [image.width() as usize, image.height() as usize];
                                                 let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
                         
-                                                // println!("Received image with size {:?}", size);
-                        
                                                 *image_clone.lock().unwrap() = Some(image);
                                             }) {
                                                 Ok(s) => {
@@ -174,7 +172,6 @@ impl eframe::App for MyApp {
                                                     self.error_msg = Some(e.to_string());
                                                 }
                                             }
-                                            //self._streaming = Some(streaming);
                                         }
                                         Streaming::Server(_) => { /* Nothing to do because it is already a streaming server */ }
                                     }
@@ -190,8 +187,6 @@ impl eframe::App for MyApp {
                                         let size = [image.width() as usize, image.height() as usize];
                                         let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
                 
-                                        // println!("Received image with size {:?}", size);
-                
                                         *image_clone.lock().unwrap() = Some(image);
                                     }) {
                                         Ok(s) => {
@@ -201,14 +196,20 @@ impl eframe::App for MyApp {
                                             self.error_msg = Some(e.to_string());
                                         }
                                     }
-                                    //self._streaming = Some(streaming);
                                 }
                                 if let Some(s) = &self._streaming{
                                     self.pause = false;
                                     self.blanking_screen = false;
                                     self.error_msg.take();
-                                    s.start().unwrap();
-                                    self.transmission_status = TransmissionStatus::Casting;
+                                    match s.start(){
+                                        Ok(_) => {
+                                            self.transmission_status = TransmissionStatus::Casting;
+                                        }
+                                        Err(e) => {
+                                            self.error_msg = Some(e.to_string());
+                                        }
+                                    }
+                                    
                                 }
                             }
                         }
@@ -217,7 +218,7 @@ impl eframe::App for MyApp {
                                 if is_valid_ipv4(&self.caster_address){
                                     if let Some(s) = &self._streaming{
                                         match s {
-                                            Streaming::Client(_) => (),
+                                            Streaming::Client(_) => { /* Nothing to do because it is already a streaming client */ },
                                             Streaming::Server(_) => {
                                                 let image_clone = self.current_image.clone();
                                                 match Streaming::new_client(self.caster_address.clone(), move |bytes| {
@@ -228,8 +229,6 @@ impl eframe::App for MyApp {
                                                     let size = [image.width() as usize, image.height() as usize];
                                                     let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
                             
-                                                    // println!("Received image with size {:?}", size);
-                            
                                                     *image_clone.lock().unwrap() = Some(image);
                                                 }) {
                                                     Ok(s) => {
@@ -239,7 +238,6 @@ impl eframe::App for MyApp {
                                                         self.error_msg = Some(e.to_string());
                                                     }
                                                 }
-                                                //self._streaming = Some(streaming);
                                             }
                                         }
                 
@@ -254,8 +252,6 @@ impl eframe::App for MyApp {
                                             let size = [image.width() as usize, image.height() as usize];
                                             let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
                     
-                                            // println!("Received image with size {:?}", size);
-                    
                                             *image_clone.lock().unwrap() = Some(image);
                                         }) {
                                             Ok(s) => {
@@ -265,12 +261,17 @@ impl eframe::App for MyApp {
                                                 self.error_msg = Some(e.to_string());
                                             }
                                         }
-                                        //self._streaming = Some(streaming);
                                     }
                                     if let Some(s) = &self._streaming{
                                         self.error_msg.take();
-                                        s.start().unwrap();
-                                        self.transmission_status = TransmissionStatus::Receiving;
+                                        match s.start(){
+                                            Ok(_) => {
+                                                self.transmission_status = TransmissionStatus::Receiving;
+                                            }
+                                            Err(e) => {
+                                                self.error_msg = Some(e.to_string());
+                                            }
+                                        }
                                     }
                                 }
                                 else{
@@ -300,13 +301,27 @@ impl eframe::App for MyApp {
                         if ui.add_enabled(!self.pause, egui::Button::new("Pause")).on_hover_text("Ctrl + P").clicked() || input.key_pressed(Key::P) && input.modifiers.ctrl{
                             self.pause = true;
                             if let Some(Streaming::Server(s)) = &self._streaming{
-                                s.pause().unwrap();
+                                match s.pause(){
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        self.error_msg = Some(e.to_string());
+                                        self._streaming.take();
+                                        self.transmission_status = TransmissionStatus::Idle;
+                                    }
+                                }
                             }
                         }
                         if ui.add_enabled(self.pause, egui::Button::new("Resume")).on_hover_text("Ctrl + R").clicked() || input.key_pressed(Key::R) && input.modifiers.ctrl{
                             self.pause = false;
                             if let Some(Streaming::Server(s)) = &self._streaming{
-                                s.start().unwrap();
+                                match s.start(){
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        self.error_msg = Some(e.to_string());
+                                        self._streaming.take();
+                                        self.transmission_status = TransmissionStatus::Idle;
+                                    }
+                                }
                             }
                         }
                         if ui.selectable_value(&mut self.blanking_screen.clone(), true, "Blanking screen").on_hover_text("Ctrl + B").clicked() || input.key_pressed(Key::B) && input.modifiers.ctrl {
