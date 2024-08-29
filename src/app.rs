@@ -149,6 +149,10 @@ impl eframe::App for MyApp {
                     ui.horizontal(|ui| {
                         if ui.selectable_value(&mut None, self.selected_screen_area.clone(), "Total screen").clicked(){
                             self.selected_screen_area = None;
+                            self.slider_value1 = 0.0;
+                            self.slider_value2 = 0.0;
+                            self.slider_value3 = 0.0;
+                            self.slider_value4 = 0.0;
                             if let Some(s) = &self._streaming {
                                 if let Streaming::Server(ss) = &s{
                                     ss.capture_fullscreen();
@@ -207,21 +211,12 @@ impl eframe::App for MyApp {
                                 let starty = self.slider_value2.round() as u32;
                                 let endx = self.screen_width - self.slider_value3.round() as u32;
                                 let endy = self.screen_height - self.slider_value4.round() as u32;
-                                if !verifica(&startx, &starty, &endx, &endy){
-                                    self.slider_value2 = 0.0;
-                                    self.slider_value3 = 0.0;
-                                    self.slider_value4 = 0.0;
-                                    self.selected_screen_area = None;
-                                    ui.colored_label(Color32::RED, "Errore resize dello schermo!");
-                                }
-                                else{
-                                    #[cfg(target_os = "linux")]
-                                    ss.capture_resize(startx, starty, endx, endy);
-                                    #[cfg(target_os = "windows")]
-                                    ss.capture_resize(startx, starty, endx, endy);
-                                    #[cfg(target_os = "macos")]
-                                    ss.capture_resize(startx, starty, endx, endy);
-                                }    
+                                #[cfg(target_os = "linux")]
+                                ss.capture_resize(startx, starty, endx, endy);
+                                #[cfg(target_os = "windows")]
+                                ss.capture_resize(startx, starty, endx, endy);
+                                #[cfg(target_os = "macos")]
+                                ss.capture_resize(startx, starty, endx, endy);
                             }   
                         };
                         if !self.selected_screen_area.is_some() {
@@ -467,14 +462,4 @@ impl eframe::App for MyApp {
             }
         });
     }
-}
-fn verifica(startx :&u32, starty :&u32, endx :&u32, endy :&u32) -> bool{
-
-    if startx >= endx {
-        return false;
-    }
-    if starty >= endy {
-        return false;
-    }
-    true
 }
