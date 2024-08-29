@@ -106,7 +106,7 @@ impl eframe::App for MyApp {
                 });
             });
 
-            match self.error_msg.clone() {
+            match &self.error_msg {
                 Some(msg) => {
                     ui.colored_label(egui::Color32::RED, msg);
                 }
@@ -221,7 +221,7 @@ impl eframe::App for MyApp {
                                             Streaming::Client(_) => { /* Nothing to do because it is already a streaming client */ },
                                             Streaming::Server(_) => {
                                                 let image_clone = self.current_image.clone();
-                                                match Streaming::new_client(self.caster_address.clone(), move |bytes| {
+                                                match Streaming::new_client(&self.caster_address, move |bytes| {
                                                     let image = image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
                                                         .unwrap()
                                                         .to_rgba8();
@@ -244,7 +244,7 @@ impl eframe::App for MyApp {
                                     }
                                     else{
                                         let image_clone = self.current_image.clone();
-                                        match Streaming::new_client(self.caster_address.clone(), move |bytes| {
+                                        match Streaming::new_client(&self.caster_address, move |bytes| {
                                             let image = image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
                                                 .unwrap()
                                                 .to_rgba8();
