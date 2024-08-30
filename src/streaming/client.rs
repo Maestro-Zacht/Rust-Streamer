@@ -12,6 +12,8 @@ use gstreamer::{self as gst, element_error, glib, prelude::*};
 use gstreamer_app as gst_app;
 use thiserror::Error;
 
+use chrono::prelude::*;
+
 #[derive(Error, Debug)]
 pub enum StreamingClientError {
     #[error("GStreamer init error: {0}")]
@@ -37,55 +39,26 @@ impl StreamingClient {
     pub fn new<T: AsRef<str>>(
         ip: T,
         mut image_parser: impl FnMut(&[u8]) + Send + 'static,
+        save_stream: bool,
     ) -> Result<Self, StreamingClientError> {
         gst::init()?;
 
-        let source = gst::ElementFactory::make("udpsrc")
-            .property("port", 9001)
-            .build()?;
+        let mut pipeline_string = "udpsrc port=9001 !
+        application/x-rtp, media=video, clock-rate=90000, encoding-name=H264, payload=96 ! rtph264depay ! tee name=t ! queue ! decodebin !
+        videoconvert ! jpegenc ! appsink name=s max-buffers=1 caps=image/jpeg".to_string();
 
-        let depay = gst::ElementFactory::make("rtph264depay").build()?;
-        let decode = gst::ElementFactory::make("decodebin").build()?;
-        let convert = gst::ElementFactory::make("videoconvert").build()?;
-        let jpegenc = gst::ElementFactory::make("jpegenc").build()?;
-        let sink = gst_app::AppSink::builder()
-            .max_buffers(3)
-            .caps(&gst::Caps::builder("image/jpeg").build())
-            .build();
+        if save_stream {
+            pipeline_string.push_str(&format!(
+                " t. ! queue ! h264parse ! mp4mux ! filesink location=./stream{}.mp4",
+                Local::now().format("%Y%m%d_%H%M%S")
+            ));
+        }
 
-        let pipeline = gst::Pipeline::with_name("recv-pipeline");
+        let pipeline = gst::parse::launch(&pipeline_string)?
+            .dynamic_cast::<gst::Pipeline>()
+            .unwrap();
 
-        pipeline.add_many(&[
-            &source,
-            &depay,
-            &decode,
-            &convert,
-            &jpegenc,
-            sink.upcast_ref(),
-        ])?;
-
-        source.link_filtered(
-            &depay,
-            &gst::Caps::builder("application/x-rtp")
-                .field("media", "video")
-                .field("clock-rate", 90000)
-                .field("encoding-name", "H264")
-                .field("payload", 96)
-                .build(),
-        )?;
-        depay.link(&decode)?;
-
-        let convert_weak = convert.downgrade();
-        decode.connect_pad_added(move |_, src_pad| {
-            let sink_pad = match convert_weak.upgrade() {
-                None => return,
-                Some(s) => s.static_pad("sink").unwrap(),
-            };
-            src_pad.link(&sink_pad).unwrap();
-        });
-
-        convert.link(&jpegenc)?;
-        jpegenc.link(&sink)?;
+        let sink: gst_app::AppSink = pipeline.by_name("s").unwrap().dynamic_cast().unwrap();
 
         let pipeline = Arc::new(pipeline);
         let connected = Arc::new(AtomicBool::new(true));
@@ -93,6 +66,11 @@ impl StreamingClient {
         let pipeline_clone = pipeline.clone();
         let connected_clone = connected.clone();
         let connection_client = ConnectionClient::new(ip, move || {
+            pipeline_clone.send_event(gst::event::Eos::new());
+            pipeline_clone
+                .bus()
+                .unwrap()
+                .timed_pop_filtered(gst::ClockTime::NONE, &[gst::MessageType::Eos]);
             let _ = pipeline_clone.set_state(gst::State::Null);
             connected_clone.store(false, Ordering::Relaxed);
         })?;
@@ -156,6 +134,13 @@ impl StreamingClient {
 
 impl Drop for StreamingClient {
     fn drop(&mut self) {
+        if self.is_connected() {
+            self.pipeline.send_event(gst::event::Eos::new());
+            self.pipeline
+                .bus()
+                .unwrap()
+                .timed_pop_filtered(gst::ClockTime::NONE, &[gst::MessageType::Eos]);
+        }
         let _ = self.pipeline.set_state(gst::State::Null);
     }
 }

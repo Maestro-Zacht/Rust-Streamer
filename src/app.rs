@@ -321,7 +321,7 @@ impl eframe::App for MyApp {
                                                     let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
                             
                                                     *image_clone.lock().unwrap() = Some(image);
-                                                }) {
+                                                },true) { // TODO save_stream
                                                     Ok(s) => {
                                                         self._streaming = Some(s);
                                                     }
@@ -344,7 +344,7 @@ impl eframe::App for MyApp {
                                             let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
                     
                                             *image_clone.lock().unwrap() = Some(image);
-                                        }) {
+                                        }, true) { // TODO save_stream
                                             Ok(s) => {
                                                 self._streaming = Some(s);
                                             }
