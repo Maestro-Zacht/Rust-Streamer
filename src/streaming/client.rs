@@ -40,52 +40,15 @@ impl StreamingClient {
     ) -> Result<Self, StreamingClientError> {
         gst::init()?;
 
-        let source = gst::ElementFactory::make("udpsrc")
-            .property("port", 9001)
-            .build()?;
+        let pipeline_string = "udpsrc port=9001 !
+        application/x-rtp, media=video, clock-rate=90000, encoding-name=H264, payload=96 ! rtph264depay ! decodebin !
+        videoconvert ! jpegenc ! appsink name=s max-buffers=1 caps=image/jpeg";
 
-        let depay = gst::ElementFactory::make("rtph264depay").build()?;
-        let decode = gst::ElementFactory::make("decodebin").build()?;
-        let convert = gst::ElementFactory::make("videoconvert").build()?;
-        let jpegenc = gst::ElementFactory::make("jpegenc").build()?;
-        let sink = gst_app::AppSink::builder()
-            .max_buffers(3)
-            .caps(&gst::Caps::builder("image/jpeg").build())
-            .build();
+        let pipeline = gst::parse::launch(&pipeline_string)?
+            .dynamic_cast::<gst::Pipeline>()
+            .unwrap();
 
-        let pipeline = gst::Pipeline::with_name("recv-pipeline");
-
-        pipeline.add_many(&[
-            &source,
-            &depay,
-            &decode,
-            &convert,
-            &jpegenc,
-            sink.upcast_ref(),
-        ])?;
-
-        source.link_filtered(
-            &depay,
-            &gst::Caps::builder("application/x-rtp")
-                .field("media", "video")
-                .field("clock-rate", 90000)
-                .field("encoding-name", "H264")
-                .field("payload", 96)
-                .build(),
-        )?;
-        depay.link(&decode)?;
-
-        let convert_weak = convert.downgrade();
-        decode.connect_pad_added(move |_, src_pad| {
-            let sink_pad = match convert_weak.upgrade() {
-                None => return,
-                Some(s) => s.static_pad("sink").unwrap(),
-            };
-            src_pad.link(&sink_pad).unwrap();
-        });
-
-        convert.link(&jpegenc)?;
-        jpegenc.link(&sink)?;
+        let sink: gst_app::AppSink = pipeline.by_name("s").unwrap().dynamic_cast().unwrap();
 
         let pipeline = Arc::new(pipeline);
         let connected = Arc::new(AtomicBool::new(true));
