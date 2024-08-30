@@ -10,8 +10,9 @@ impl Streaming {
     pub fn new_client<T: AsRef<str>>(
         ip: T,
         image_parser: impl FnMut(&[u8]) + Send + 'static,
+        save_stream: bool,
     ) -> Result<Self, client::StreamingClientError> {
-        client::StreamingClient::new(ip, image_parser).map(Streaming::Client)
+        client::StreamingClient::new(ip, image_parser, save_stream).map(Streaming::Client)
     }
 
     pub fn new_server(
