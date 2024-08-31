@@ -68,7 +68,6 @@ pub struct MyApp {
 
 impl MyApp {
     pub fn new() -> Self {
-        // TODO not use a fake streaming
         let event_loop = EventLoop::new();
 
         // Get monitor dimensions
@@ -305,52 +304,60 @@ impl eframe::App for MyApp {
                             }
                         }
                         Mode::Receiver => {
-                            if ui.button("Start reception").clicked() {
+                            if ui.button("Start reception without recording").clicked() {
                                 if is_valid_ipv4(&self.caster_address){
-                                    if let Some(s) = &self._streaming{
-                                        match s {
-                                            Streaming::Client(_) => { /* Nothing to do because it is already a streaming client */ },
-                                            Streaming::Server(_) => {
-                                                let image_clone = self.current_image.clone();
-                                                match Streaming::new_client(&self.caster_address, move |bytes| {
-                                                    let image = image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
-                                                        .unwrap()
-                                                        .to_rgba8();
-                            
-                                                    let size = [image.width() as usize, image.height() as usize];
-                                                    let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
-                            
-                                                    *image_clone.lock().unwrap() = Some(image);
-                                                },true) { // TODO save_stream
-                                                    Ok(s) => {
-                                                        self._streaming = Some(s);
-                                                    }
-                                                    Err(e) => {
-                                                        self.error_msg = Some(e.to_string());
-                                                    }
-                                                }
-                                            }
-                                        }
+                                    let image_clone = self.current_image.clone();
+                                    match Streaming::new_client(&self.caster_address, move |bytes| {
+                                        let image = image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
+                                            .unwrap()
+                                            .to_rgba8();
                 
+                                        let size = [image.width() as usize, image.height() as usize];
+                                        let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
+                
+                                        *image_clone.lock().unwrap() = Some(image);
+                                    }, false) {
+                                        Ok(s) => {
+                                            self._streaming = Some(s);
+                                        }
+                                        Err(e) => {
+                                            self.error_msg = Some(e.to_string());
+                                        }
                                     }
-                                    else{
-                                        let image_clone = self.current_image.clone();
-                                        match Streaming::new_client(&self.caster_address, move |bytes| {
-                                            let image = image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
-                                                .unwrap()
-                                                .to_rgba8();
-                    
-                                            let size = [image.width() as usize, image.height() as usize];
-                                            let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
-                    
-                                            *image_clone.lock().unwrap() = Some(image);
-                                        }, true) { // TODO save_stream
-                                            Ok(s) => {
-                                                self._streaming = Some(s);
+                                    if let Some(s) = &self._streaming{
+                                        self.error_msg.take();
+                                        match s.start(){
+                                            Ok(_) => {
+                                                self.transmission_status = TransmissionStatus::Receiving;
                                             }
                                             Err(e) => {
                                                 self.error_msg = Some(e.to_string());
                                             }
+                                        }
+                                    }
+                                }
+                                else{
+                                    self.error_msg = Some("Please insert a valid IP address!".to_string());
+                                }
+                            }
+                            if ui.button("Start reception and save recording").clicked() {
+                                if is_valid_ipv4(&self.caster_address){
+                                    let image_clone = self.current_image.clone();
+                                    match Streaming::new_client(&self.caster_address, move |bytes| {
+                                        let image = image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
+                                            .unwrap()
+                                            .to_rgba8();
+                
+                                        let size = [image.width() as usize, image.height() as usize];
+                                        let image = egui::ColorImage::from_rgba_premultiplied(size, &image);
+                
+                                        *image_clone.lock().unwrap() = Some(image);
+                                    },true) {
+                                        Ok(s) => {
+                                            self._streaming = Some(s);
+                                        }
+                                        Err(e) => {
+                                            self.error_msg = Some(e.to_string());
                                         }
                                     }
                                     if let Some(s) = &self._streaming{
