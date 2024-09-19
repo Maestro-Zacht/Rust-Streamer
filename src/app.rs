@@ -210,13 +210,17 @@ impl eframe::App for MyApp {
                                 let starty = self.slider_value2.round() as u32;
                                 let endx = self.screen_width - self.slider_value3.round() as u32;
                                 let endy = self.screen_height - self.slider_value4.round() as u32;
-                                #[cfg(target_os = "linux")]
-                                ss.capture_resize(startx, starty, endx, endy);
-                                #[cfg(target_os = "windows")]
+
+                                #[cfg(any(target_os = "linux", target_os = "windows"))]
                                 ss.capture_resize(startx, starty, endx, endy);
                                 #[cfg(target_os = "macos")]
-                                ss.capture_resize(startx, starty, endx, endy);
-                            }   
+                                ss.capture_resize(
+                                    self.slider_value1.round() as u32,
+                                    self.slider_value2.round() as u32,
+                                    self.slider_value3.round() as u32, 
+                                    self.slider_value4.round() as u32,
+                                );
+                            }
                         };
                         if !self.selected_screen_area.is_some() {
                             if let Some(Streaming::Server(ss)) = &self._streaming {

@@ -26,6 +26,5 @@ impl Streaming {
             Streaming::Client(client) => client.start().map_err(|e| e.into()),
             Streaming::Server(server) => server.start().map_err(|e| e.into()),
         }
-        // TODO: better error propagation
     }
 }
